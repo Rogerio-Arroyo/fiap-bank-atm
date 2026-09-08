@@ -8,6 +8,11 @@
 > **FIAP - Engenharia de Software (2026)**  
 > **Checkpoint 4 (CP4)** — Aplicação de Emulação de Caixa Eletrônico (ATM) construída em **Java 21**, **Swing (FlatLaf)** e orientada aos princípios de **Domain-Driven Design (DDD)**.
 
+**Trabalho individual**
+| RM | Nome Completo |
+| :--- | :--- |
+| 563517 | Rogério Cruz Arroyo |
+
 ---
 
 ## 📌 Visão Geral
@@ -58,34 +63,44 @@ A aplicação foi projetada com arquitetura limpa em camadas baseada em **DDD (D
 A aplicação segue uma divisão clara de responsabilidades estruturada nos padrões do **Domain-Driven Design (DDD)**:
 
 ```
-com.fiap.bank.atm
-├── domain                          # Camada de Domínio (Regras de Negócio Puras)
-│   ├── exception                   # Exceções de negócio customizadas
-│   │   ├── AccountBlockedException.java
-│   │   ├── DailyLimitExceededException.java
-│   │   ├── InsufficientFundsException.java
-│   │   └── InvalidPinException.java
-│   ├── model                       # Entidades e Objetos de Valor (Value Objects)
-│   │   ├── Account.java            # Entidade Principal da Conta Bancária
-│   │   ├── BaseEntity.java         # Classe base com ID (UUID) e datas de criação/atualização
-│   │   ├── Money.java              # Value Object imutável para operações monetárias (BigDecimal)
-│   │   ├── Transaction.java        # Entidade de Registro de Transações
-│   │   └── TransactionType.java    # Enum dos tipos de transação (Saque, Depósito, Transferências)
-│   └── repository                  # Interfaces de Repositório
-│       └── AccountRepository.java
+fiap-bank-atm (pom agregador)
+├── domain                          # Módulo Maven: Camada de Domínio (Regras de Negócio Puras)
+│   └── .../domain
+│       ├── exception               # Exceções de negócio customizadas
+│       │   ├── AccountBlockedException.java
+│       │   ├── DailyLimitExceededException.java
+│       │   ├── InsufficientFundsException.java
+│       │   └── InvalidPinException.java
+│       ├── model                   # Entidades e Objetos de Valor (Value Objects)
+│       │   ├── Account.java            # Entidade Principal da Conta Bancária
+│       │   ├── BaseEntity.java         # Classe base com ID (UUID) e datas de criação/atualização
+│       │   ├── Money.java              # Value Object imutável para operações monetárias (BigDecimal)
+│       │   ├── Transaction.java        # Entidade de Registro de Transações
+│       │   └── TransactionType.java    # Enum dos tipos de transação (Saque, Depósito, Transferências)
+│       └── repository              # Contratos de Repositório (Generics + Optional)
+│           ├── ATMRepository.java
+│           └── AccountRepository.java
 │
-├── application                     # Camada de Aplicação (Casos de Uso & Orquestração)
-│   └── service
-│       └── AtmService.java         # Orquestra autenticação, transações e estado da sessão
+├── application                     # Módulo Maven: Camada de Aplicação (Casos de Uso & DTOs)
+│   └── .../application
+│       ├── dto                     # Java Records expostos para fora do domínio
+│       │   ├── AccountInfoDTO.java
+│       │   └── TransactionDTO.java
+│       └── service
+│           └── AtmService.java     # Orquestra autenticação, transações e estado da sessão
 │
-├── infrastructure                  # Camada de Infraestrutura (Persistência e Recursos Externos)
-│   └── persistence
-│       └── InMemoryAccountRepository.java # Implementação em memória com dados de teste (Seed)
+├── infrastructure                  # Módulo Maven: Persistência JDBC/SQLite + composição (main)
+│   └── com.fiap.bank.atm
+│       ├── AtmApplication.java     # Ponto de entrada: monta repositório, service e tela
+│       └── infrastructure.persistence
+│           ├── ConnectionFactory.java
+│           └── AccountRepositoryJdbcImpl.java
 │
-└── presentation                    # Camada de Apresentação (UI / Swing)
-    ├── AtmFrame.java               # Janela principal do ATM com FlatLaf Dark Theme
-    ├── AtmFrame.form               # Arquivo de layout visual do Swing Form
-    └── ScreenState.java            # Enum da Máquina de Estados da Tela
+└── presentation                    # Módulo Maven: Camada de Apresentação (UI / Swing)
+    └── .../presentation
+        ├── AtmFrame.java           # Janela principal do ATM com FlatLaf Dark Theme
+        ├── AtmFrame.form           # Arquivo de layout visual do Swing Form
+        └── ScreenState.java        # Enum da Máquina de Estados da Tela
 ```
 
 ---
@@ -106,8 +121,17 @@ com.fiap.bank.atm
 - Atua como a fachada da camada de aplicação.
 - Gerencia o estado da conta atualmente autenticada (`currentAccount`).
 - Garante a execução transacional salvando alterações no `AccountRepository`.
+- Nunca expõe entidades de domínio: todo método público recebe/retorna `AccountInfoDTO`, `TransactionDTO`
+  (Java Records definidos em `application.dto`), `BigDecimal` ou tipos primitivos.
 
-### 4. `ScreenState` & `AtmFrame` (Máquina de Estados de Tela)
+### 4. `ATMRepository<T extends BaseEntity>` e `AccountRepositoryJdbcImpl`
+- Repositório genérico do domínio, com `T extends BaseEntity` e todo método de busca devolvendo `Optional<T>`.
+- `AccountRepository` estende `ATMRepository<Account>` e adiciona `findByAccountNumber`.
+- A implementação concreta (`infrastructure.persistence.AccountRepositoryJdbcImpl`) usa apenas JDBC puro
+  (`PreparedStatement`/`ResultSet`, sem ORM) sobre um banco SQLite (`fiapbank.db`), com `ConnectionFactory`
+  cuidando da criação do schema e da carga inicial de contas de teste.
+
+### 5. `ScreenState` & `AtmFrame` (Máquina de Estados de Tela)
 A interface gráfica opera sobre uma **Máquina de Estados Finitos (FSM)** representada pelo enum `ScreenState`:
 
 | Estado (`ScreenState`) | Descrição |
@@ -129,7 +153,7 @@ A interface gráfica opera sobre uma **Máquina de Estados Finitos (FSM)** repre
 
 ## 🔑 Contas Pré-cadastradas para Teste (Seed Data)
 
-Ao iniciar a aplicação, as seguintes contas de teste são carregadas automaticamente em memória pelo `InMemoryAccountRepository`:
+Na primeira conexão, `ConnectionFactory` cria o schema e insere as seguintes contas de teste no arquivo `fiapbank.db` (SQLite), na raiz do módulo `infrastructure`. Os dados agora são persistidos de verdade em disco: reiniciar a aplicação não apaga saldo nem extrato.
 
 | Número da Conta | PIN (Senha) | Saldo Inicial | Limite Diário Saque | Histórico Inicial |
 | :---: | :---: | :---: | :---: | :--- |
@@ -144,8 +168,9 @@ Ao iniciar a aplicação, as seguintes contas de teste são carregadas automatic
 - **Java 21**: Linguagem principal de programação (LTS).
 - **Swing (Java GUI)**: Framework nativo de interface gráfica.
 - **FlatLaf 3.5.1 (`com.formdev:flatlaf`)**: Look & Feel moderno e escuro para interfaces Swing.
+- **SQLite JDBC 3.45.1.0 (`org.xerial:sqlite-jdbc`)**: Driver de acesso nativo ao banco de dados relacional (sem ORM), usado com `PreparedStatement`/`ResultSet` puros.
 - **JUnit 5 (5.10.2)**: Framework de testes unitários.
-- **Apache Maven**: Gerenciamento de dependências e build.
+- **Apache Maven (multi-módulo)**: Gerenciamento de dependências e build, com 4 módulos físicos (`domain`, `application`, `infrastructure`, `presentation`).
 
 ---
 
@@ -164,10 +189,15 @@ Ao iniciar a aplicação, as seguintes contas de teste são carregadas automatic
    cd fiap-bank-atm
    ```
 
-2. Compile e execute a aplicação via Maven:
+2. Instale todos os módulos no repositório local do Maven (necessário uma vez, ou sempre que mudar código de
+   `domain`, `application` ou `presentation`) e execute a aplicação a partir do módulo `infrastructure`, que é o
+   ponto de composição (`main`) do sistema:
    ```bash
-   mvn clean compile exec:java
+   mvn clean install -DskipTests
+   mvn -pl infrastructure exec:java
    ```
+   *(Rodar `exec:java` direto com `-am` falha: o goal é aplicado a todo o reactor, incluindo o pom raiz — que é
+   só um agregador e não tem `mainClass` configurado.)*
 
 ---
 
@@ -185,8 +215,8 @@ run.bat
 
 1. Abra a IDE e selecione **Open Project** apontando para a pasta raiz do projeto (onde se encontra o `pom.xml`).
 2. Aguarde a sincronização das dependências Maven (`flatlaf`, `junit-jupiter`).
-3. Localize e execute a classe principal:  
-   [AtmApplication.java](file:///Users/eduardo.ramos/workspace/fiap/engenharia-de-software/2026/fiap-bank-atm/CP4/fiap-bank-atm/src/main/java/com/fiap/bank/atm/AtmApplication.java) (`com.fiap.bank.atm.AtmApplication`).
+3. Localize e execute a classe principal `com.fiap.bank.atm.AtmApplication`, dentro do módulo `infrastructure`
+   (`infrastructure/src/main/java/com/fiap/bank/atm/AtmApplication.java`).
 
 ---
 
@@ -213,5 +243,7 @@ mvn test
 
 ## 📝 Licença e Créditos
 
-Desenvolvido para fins acadêmicos como parte do curso de **Engenharia de Software (2026)** da **FIAP**.  
-Prof. Eduardo Ramos.
+Desenvolvido para fins acadêmicos como parte do curso de **Engenharia de Software (2026)** da **FIAP**, disciplina
+Domain Driven Design - Java, turma 2ESPH, Prof. Eduardo dos Santos Ramos.
+
+**Autor:** Rogério Cruz Arroyo (RM 563517) — trabalho individual.
