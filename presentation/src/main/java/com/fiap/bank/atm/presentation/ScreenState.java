@@ -1,0 +1,19 @@
+package com.fiap.bank.atm.presentation;
+
+public enum ScreenState {
+    WELCOME,
+    ENTER_PIN,
+    MAIN_MENU,
+    WITHDRAW_SELECT,
+    WITHDRAW_CUSTOM,
+    DEPOSIT_INPUT,
+    TRANSFER_ACCOUNT,
+    TRANSFER_VALUE,
+    SHOW_BALANCE,
+    SHOW_STATEMENT,
+    ANIMATION_CASH,
+    ANIMATION_PRINT,
+    ANIMATION_DEPOSIT,
+    SUCCESS,
+    ERROR
+}
